@@ -5,15 +5,30 @@ The goal of this project is the exploration and modeling of cloud detection in t
 ## Table of Contents
 - [Getting Started](#gettingstarted)
 - [Plotting Images](#plottingimages)
-- [Creating Tables] (#creatingtables)
-- [ROC curves] (#roccurves)
-
+- [Creating Tables](#creatingtables)
+- [ROC curves](#roccurves)
 
 
 ## Getting Started
 
 The instructions below will help you recreate a copy of the project and running on your local machine for testing purposes. 
 
-### Prerequisites
+### Installation
 
-What things you need to install the software and how to install them
+To recreate this project, you would need to use Rscript or RStudio. Once you have finished installing the programs, you are ready to start. The main packages used in this project are listed below:
+
+```
+library(ggplot2)
+library(readr)
+library(caret)
+library(anchors)
+library(plotROC)
+library(xtable)
+library(kableExtra)
+```
+Install these packages before calling on library using:
+
+```
+install.package("package_name")
+``
+
