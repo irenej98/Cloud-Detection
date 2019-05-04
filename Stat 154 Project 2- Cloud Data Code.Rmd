@@ -1,0 +1,1188 @@
+---
+title: 'Stat 154 Project 2: Cloud Data Code'
+author: "Irene Ju, Josh Birck"
+date: "5/3/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# packages
+library(ggplot2)
+library(readr)
+library(caret)
+library(anchors)
+library(plotROC)
+library(xtable)
+library(kableExtra)
+```
+
+```{r}
+image1 <- read.table("~/Desktop/STAT 154/project/project2/image_data/image1.txt")
+image1 = as.data.frame(image1)
+colnames(image1) = c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+
+image2 <- read.table("~/Desktop/STAT 154/project/project2/image_data/image2.txt")
+image2 = as.data.frame(image2)
+colnames(image2) = c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+
+image3 <- read.table("~/Desktop/STAT 154/project/project2/image_data/image3.txt")
+image3 = as.data.frame(image3)
+colnames(image3) = c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF", "AN")
+```
+
+```{r}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+
+
+#1:Data Collection and Exploration
+
+##b:
+Labeled Maps 
+```{r}
+#Image 1
+ggplot(data = image1, aes(x = x, y = y, color = factor(label))) + geom_point() + xlab("x coordinate") + ylab("y coordinate") + ggtitle("Image 1") + scale_color_manual(values=c("darkblue", "lightblue", "white")) + labs(col="Expert Label")
+```
+
+```{r}
+#Image 2
+ggplot(data = image2, aes(x = x, y = y, color = factor(label))) + geom_point() + xlab("x coordinate") + ylab("y coordinate") + ggtitle("Image 2") + scale_color_manual(values=c("darkblue", "lightblue", "white")) + labs(col="Expert Label")
+```
+
+```{r}
+#Image 3
+ggplot(data = image3, aes(x = x, y = y, color = factor(label))) + geom_point() + xlab("x coordinate") + ylab("y coordinate") + ggtitle("Image 3") + scale_color_manual(values=c("darkblue", "lightblue", "white")) + labs(col="Expert Label")
+```
+
+Percent of pixels
+```{r}
+# Image 1
+p1 <- nrow(image1[image1$label == 1, ])/nrow(image1) # proportion of cloudy pixels
+p2 <- nrow(image1[image1$label == 0, ])/nrow(image1) # proportion of unlabeled pixels
+p3 <- nrow(image1[image1$label == -1, ])/nrow(image1) # proportion of not cloudy pixels
+
+
+# Image 2
+p4 <- nrow(image2[image2$label == 1, ])/nrow(image2) # proportion of cloudy pixels
+p5 <- nrow(image2[image2$label == 0, ])/nrow(image2) # proportion of unlabeled pixels
+p6 <- nrow(image2[image2$label == -1, ])/nrow(image2) # proportion of not cloudy pixels
+
+# Image 3
+p7 <- nrow(image3[image3$label == 1, ])/nrow(image3) # proportion of cloudy pixels
+p8 <- nrow(image3[image3$label == 0, ])/nrow(image3) # proportion of unlabeled pixels
+p9 <- nrow(image3[image3$label == -1, ])/nrow(image3) # proportion of not cloudy pixels
+
+pixel_classes <- matrix(c(p1, p2, p3, p4, p5, p6, p7, p8, p9), ncol = 3, nrow = 3)
+colnames(pixel_classes) <- c("Image 1", "Image 2", "Image 3")
+rownames(pixel_classes) <- c("Cloudy", "Unlabeled", "Not Cloudy")
+
+pixel_classes = data.frame(pixel_classes)
+
+kable(pixel_classes)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+
+##c.
+```{r}
+# pairwaise scatterplots for all 8 features, for each image
+pairs(image1[, 4:11], cex = 0.2)
+pairs(image2[, 4:11], cex = 0.2)
+pairs(image3[, 4:11], cex = 0.2)
+```
+
+```{r}
+# Frequency Plots
+
+ggplot(data = image1, aes(label)) + 
+  geom_freqpoly(binwidth = 0.25) + 
+  ggtitle("Frequency of Labels for Image 1")
+
+ggplot(data = image2, aes(label)) + 
+  geom_freqpoly(binwidth = 0.25) + 
+  ggtitle("Frequency of Labels for Image 2")
+
+ggplot(data = image3, aes(label)) + 
+  geom_freqpoly(binwidth = 0.25) + 
+  ggtitle("Frequency of Labels for Image 3")
+```
+
+Distribution of Class Labels Grouped by Class Label
+```{r}
+# NDAI
+par(mfrow = c(1, 3))
+boxplot(image1[image1$label == 1, ]$NDAI, image1[image1$label == -1, ]$NDAI, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "NDAI", main = "NDAI vs Label (Image 1)")
+boxplot(image2[image2$label == 1, ]$NDAI, image2[image2$label == -1, ]$NDAI, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "NDAI", main = "NDAI vs Label (Image 2)")
+boxplot(image3[image3$label == 1, ]$NDAI, image3[image3$label == -1, ]$NDAI, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "NDAI", main = "NDAI vs Label (Image 3)")
+```
+
+```{r}
+# SD
+par(mfrow = c(1, 3))
+boxplot(image1[image1$label == 1, ]$SD, image1[image1$label == -1, ]$SD, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "SD", main = "SD vs Label (Image 1)")
+boxplot(image2[image2$label == 1, ]$SD, image2[image2$label == -1, ]$SD, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "SD", main = "SD vs Label (Image 2)")
+boxplot(image3[image3$label == 1, ]$SD, image3[image3$label == -1, ]$SD, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "SD", main = "SD vs Label (Image 3)")
+```
+
+```{r}
+# CORR
+par(mfrow = c(1, 3))
+boxplot(image1[image1$label == 1, ]$CORR, image1[image1$label == -1, ]$CORR, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "CORR", main = "CORR vs Label (Image 1)")
+boxplot(image2[image2$label == 1, ]$CORR, image2[image2$label == -1, ]$CORR, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "CORR", main = "CORR vs Label (Image 2)")
+boxplot(image3[image3$label == 1, ]$CORR, image3[image3$label == -1, ]$CORR, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "CORR", main = "CORR vs Label (Image 3)")
+```
+
+```{r}
+# AN (Since all the radiance angle features are positively correlated, I will only look at AN to be concise)
+par(mfrow = c(1, 3))
+boxplot(image1[image1$label == 1, ]$AN, image1[image1$label == -1, ]$AN, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "AN", main = "AN vs Label (Image 1)")
+boxplot(image2[image2$label == 1, ]$AN, image2[image2$label == -1, ]$AN, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "AN", main = "AN vs Label (Image 2)")
+boxplot(image3[image3$label == 1, ]$AN, image3[image3$label == -1, ]$AN, names = c("Cloud", "No Cloud"), 
+        xlab = "Expert Label", ylab = "AN", main = "AN vs Label (Image 3)")
+```
+
+
+
+
+#2: Preparation
+
+##a.
+```{r}
+# Method 1: Random Split
+
+method1_split <- function(data, fold){
+  #Take out all the unlabeled points
+  new_im <- data[data$label != 0, ]
+  new_im <- replace.value(new_im, "label", -1, 0)
+  #80% of the sample size
+  im_sample <- floor(0.8 * nrow(new_im))
+  
+  set.seed(2)
+  train_ind <- sample(seq_len(nrow(new_im)), size = im_sample)
+  
+  #Split the data into 80% train and 20% test
+  train_im <- new_im[train_ind, ]
+  test_im <- new_im[-train_ind, ]
+  
+  #You then split the train data into 4 folds by random sampling
+  set.seed(3)
+  rand <- sample(nrow(train_im))
+  
+  k_row <- c()
+  for(i in 1:fold){
+    a <- rand[rand %% fold + 1 == i]
+    k_row[[i]] <- a
+  }
+  
+#You now have 4 folds, one of the 4 folds is used as the validation set and the remaining 3 folds is used as the training set. The model's final validation error is the average of the 4 validation errors from each trial. The biggest advantage of this method is that every data point is used for validation exactly once and for training 3 times. k-fold cross-validation takes more computation time than the train-validation split since we typically have to refit each model from scratch for each fold. However, it computes a more accurate validation error by averaging multiple errors together for each model.
+  folds <- c()
+  for(i in 1:fold){
+    b <- train_im[k_row[[i]], ]
+    folds[[i]] <- b
+  }
+  
+  return(list(folds, test_im))
+}
+```
+
+```{r}
+# Method 2: Split by x and y coordinates
+
+method2_split <- function(data) {
+
+  # create 9 blocks within the image
+  i1 <- data[order(data$x), ]
+  i1$g_x <- as.numeric(cut(i1$x, 3))
+  i1 <- i1[order(data$y), ]
+  i1$g_y <- as.numeric(cut(i1$y, 3))
+
+  block1 <- i1[i1$g_x == 1 & i1$g_y == 1, ]
+  block2 <- i1[i1$g_x == 1 & i1$g_y == 2, ]
+  block3 <- i1[i1$g_x == 1 & i1$g_y == 3, ]
+  block4 <- i1[i1$g_x == 2 & i1$g_y == 1, ]
+  block5 <- i1[i1$g_x == 2 & i1$g_y == 2, ]
+  block6 <- i1[i1$g_x == 2 & i1$g_y == 3, ]
+  block7 <- i1[i1$g_x == 3 & i1$g_y == 1, ]
+  block8 <- i1[i1$g_x == 3 & i1$g_y == 2, ]
+  block9 <- i1[i1$g_x == 3 & i1$g_y == 3, ]
+  
+  blocks = list(block1, block2, block3, block4, block5, block6, block7, block8, block9)
+  
+  # take out unlabeled points and replace all -1 with 0
+  new_blocks <- c()
+  for(i in 1:length(blocks)) {
+    new_im <- blocks[[i]][blocks[[i]]$label != 0, ]
+    new_im <- replace.value(new_im, 'label', -1, 0)
+    new_blocks[[i]] <- new_im
+  }
+  
+  # find test blocks as the 2 blocks with min and max number of observations
+  rows <- c()
+  for(i in 1:length(new_blocks)){
+    rows[[i]] = nrow(new_blocks[[i]])
+  }
+  test1 <- new_blocks[[which.max(rows)]]
+  test2 <- new_blocks[[which.min(rows)]]
+  
+  # the train blocks are the 7 blocks that aren't the test blocks
+  train <- new_blocks[- c(which.max(rows), which.min(rows))]
+  
+  return(list(train, test1, test2))
+}
+
+# reason behind method 2 split
+# This method attempts to solve one of the problems with the first split method, which is that cloud data is not iid. When new data comes in, it is in the form of images where the pixels are grouped together depending on whether they are cloudy or not cloudy. The random split does not take this into account becuse it aims to get an equal distribution of class labels per fold, but would rarely the case for new data. By splitting the image into 9 blocks, pixels are grouped together based on geographical location, and having 9 blocks gives you a larger variety class distributions to train models on.
+```
+
+
+##b.
+```{r}
+# trivial classifier for method 1 split
+
+f_im1 <- method1_split(image1, 4)
+f_im2 <- method1_split(image2, 4)
+f_im3 <- method1_split(image3, 4)
+
+#Trivial Classifier for Image 1
+test_im1 <- f_im1[[2]]
+f1_im1 <- f_im1[[1]][[1]]
+f2_im1 <- f_im1[[1]][[2]]
+f3_im1 <- f_im1[[1]][[3]]
+f4_im1 <- f_im1[[1]][[4]]
+trivial_test_im1 <- nrow(test_im1[test_im1$label == 0, ])/nrow(test_im1)
+trivial_f1_im1 <- nrow(f1_im1[f1_im1$label == 0, ])/nrow(f1_im1)
+trivial_f2_im1 <- nrow(f2_im1[f2_im1$label == 0, ])/nrow(f2_im1)
+trivial_f3_im1 <- nrow(f3_im1[f3_im1$label == 0, ])/nrow(f3_im1)
+trivial_f4_im1 <- nrow(f4_im1[f4_im1$label == 0, ])/nrow(f4_im1)
+
+#Trivial Classifier for Image 2
+test_im2 <- f_im2[[2]]
+f1_im2 <- f_im2[[1]][[1]]
+f2_im2 <- f_im2[[1]][[2]]
+f3_im2 <- f_im2[[1]][[3]]
+f4_im2 <- f_im2[[1]][[4]]
+trivial_test_im2 <- nrow(test_im2[test_im2$label == 0, ])/nrow(test_im2)
+trivial_f1_im2 <- nrow(f1_im2[f1_im2$label == 0, ])/nrow(f1_im2)
+trivial_f2_im2 <- nrow(f2_im2[f2_im2$label == 0, ])/nrow(f2_im2)
+trivial_f3_im2 <- nrow(f3_im2[f3_im2$label == 0, ])/nrow(f3_im2)
+trivial_f4_im2 <- nrow(f4_im2[f4_im2$label == 0, ])/nrow(f4_im2)
+
+#Trivial Classifier for Image 3
+test_im3 <- f_im3[[2]]
+f1_im3 <- f_im3[[1]][[1]]
+f2_im3 <- f_im3[[1]][[2]]
+f3_im3 <- f_im3[[1]][[3]]
+f4_im3 <- f_im3[[1]][[4]]
+trivial_test_im3 <- nrow(test_im3[test_im2$label == 0, ])/nrow(test_im3)
+trivial_f1_im3 <- nrow(f1_im3[f1_im3$label == 0, ])/nrow(f1_im3)
+trivial_f2_im3 <- nrow(f2_im3[f2_im3$label == 0, ])/nrow(f2_im3)
+trivial_f3_im3 <- nrow(f3_im3[f3_im3$label == 0, ])/nrow(f3_im3)
+trivial_f4_im3 <- nrow(f4_im3[f4_im3$label == 0, ])/nrow(f4_im3)
+
+Images = c(1, 2, 3)
+test_set = c(trivial_test_im1, trivial_test_im2, trivial_test_im3)
+validation_set = c(sum(trivial_f1_im1, trivial_f2_im1, trivial_f3_im1, trivial_f4_im1)/4, sum(trivial_f1_im2, trivial_f2_im2, trivial_f3_im2, trivial_f4_im2)/4, sum(trivial_f1_im3, trivial_f2_im3, trivial_f3_im3, trivial_f4_im3)/4)
+accuracy_dt = data.frame(Images, test_set, validation_set)
+
+kable(accuracy_dt)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+# trivial classifier for method 2 split
+
+im1_folds <- method2_split(image1)
+im2_folds <- method2_split(image2)
+im3_folds <- method2_split(image3)
+
+# Trivial classifier for image 1
+im1_test1 <- im1_folds[[2]]
+im1_test2 <- im1_folds[[3]]
+im1_fold1 <- im1_folds[[1]][[1]]
+im1_fold2 <- im1_folds[[1]][[2]]
+im1_fold3 <- im1_folds[[1]][[3]]
+im1_fold4 <- im1_folds[[1]][[4]]
+im1_fold5 <- im1_folds[[1]][[5]]
+im1_fold6 <- im1_folds[[1]][[6]]
+im1_fold7 <- im1_folds[[1]][[7]]
+
+im1_trivial_test1 <- nrow(im1_test1[im1_test1$label == 0, ])/nrow(im1_test1)
+im1_trivial_test2 <- nrow(im1_test2[im1_test2$label == 0, ])/nrow(im1_test2)
+im1_trivial_fold1 <- nrow(im1_fold1[im1_fold1$label == 0, ])/nrow(im1_fold1)
+im1_trivial_fold2 <- nrow(im1_fold2[im1_fold2$label == 0, ])/nrow(im1_fold2)
+im1_trivial_fold3 <- nrow(im1_fold3[im1_fold3$label == 0, ])/nrow(im1_fold3)
+im1_trivial_fold4 <- nrow(im1_fold4[im1_fold4$label == 0, ])/nrow(im1_fold4)
+im1_trivial_fold5 <- nrow(im1_fold5[im1_fold5$label == 0, ])/nrow(im1_fold5)
+im1_trivial_fold6 <- nrow(im1_fold6[im1_fold6$label == 0, ])/nrow(im1_fold6)
+im1_trivial_fold7 <- nrow(im1_fold7[im1_fold7$label == 0, ])/nrow(im1_fold7)
+
+# Trivial classifier for image 2
+im2_test1 <- im2_folds[[2]]
+im2_test2 <- im2_folds[[3]]
+im2_fold1 <- im2_folds[[1]][[1]]
+im2_fold2 <- im2_folds[[1]][[2]]
+im2_fold3 <- im2_folds[[1]][[3]]
+im2_fold4 <- im2_folds[[1]][[4]]
+im2_fold5 <- im2_folds[[1]][[5]]
+im2_fold6 <- im2_folds[[1]][[6]]
+im2_fold7 <- im2_folds[[1]][[7]]
+
+im2_trivial_test1 <- nrow(im2_test1[im2_test1$label == 0, ])/nrow(im2_test1)
+im2_trivial_test2 <- nrow(im2_test2[im2_test2$label == 0, ])/nrow(im2_test2)
+im2_trivial_fold1 <- nrow(im2_fold1[im2_fold1$label == 0, ])/nrow(im2_fold1)
+im2_trivial_fold2 <- nrow(im2_fold2[im2_fold2$label == 0, ])/nrow(im2_fold2)
+im2_trivial_fold3 <- nrow(im2_fold3[im2_fold3$label == 0, ])/nrow(im2_fold3)
+im2_trivial_fold4 <- nrow(im2_fold4[im2_fold4$label == 0, ])/nrow(im2_fold4)
+im2_trivial_fold5 <- nrow(im2_fold5[im2_fold5$label == 0, ])/nrow(im2_fold5)
+im2_trivial_fold6 <- nrow(im2_fold6[im2_fold6$label == 0, ])/nrow(im2_fold6)
+im2_trivial_fold7 <- nrow(im2_fold7[im2_fold7$label == 0, ])/nrow(im2_fold7)
+
+# Trivial classifier for image 3
+im3_test1 <- im3_folds[[2]]
+im3_test2 <- im3_folds[[3]]
+im3_fold1 <- im3_folds[[1]][[1]]
+im3_fold2 <- im3_folds[[1]][[2]]
+im3_fold3 <- im3_folds[[1]][[3]]
+im3_fold4 <- im3_folds[[1]][[4]]
+im3_fold5 <- im3_folds[[1]][[5]]
+im3_fold6 <- im3_folds[[1]][[6]]
+im3_fold7 <- im3_folds[[1]][[7]]
+
+im3_trivial_test1 <- nrow(im3_test1[im3_test1$label == 0, ])/nrow(im3_test1)
+im3_trivial_test2 <- nrow(im3_test2[im3_test2$label == 0, ])/nrow(im3_test2)
+im3_trivial_fold1 <- nrow(im3_fold1[im3_fold1$label == 0, ])/nrow(im3_fold1)
+im3_trivial_fold2 <- nrow(im3_fold2[im3_fold2$label == 0, ])/nrow(im3_fold2)
+im3_trivial_fold3 <- nrow(im3_fold3[im3_fold3$label == 0, ])/nrow(im3_fold3)
+im3_trivial_fold4 <- nrow(im3_fold4[im3_fold4$label == 0, ])/nrow(im3_fold4)
+im3_trivial_fold5 <- nrow(im3_fold5[im3_fold5$label == 0, ])/nrow(im3_fold5)
+im3_trivial_fold6 <- nrow(im3_fold6[im3_fold6$label == 0, ])/nrow(im3_fold6)
+im3_trivial_fold7 <- nrow(im3_fold7[im3_fold7$label == 0, ])/nrow(im3_fold7)
+
+
+Images = c(1, 2, 3)
+test_set = c(sum(im1_trivial_test1, im1_trivial_test2)/2, sum(im2_trivial_test1, im2_trivial_test2)/2, sum(im3_trivial_test1, im3_trivial_test2)/2)
+validation_set = c(sum(im1_trivial_fold1, im1_trivial_fold2, im1_trivial_fold3, im1_trivial_fold4, im1_trivial_fold5, im1_trivial_fold6, im1_trivial_fold7)/7, sum(im2_trivial_fold1, im2_trivial_fold2, im2_trivial_fold3, im2_trivial_fold4, im2_trivial_fold5, im2_trivial_fold6, im2_trivial_fold7)/7, sum(im3_trivial_fold1, im3_trivial_fold2, im3_trivial_fold3, im3_trivial_fold4, im3_trivial_fold5, im3_trivial_fold6, im3_trivial_fold7)/7)
+accuracy_dt = data.frame(Images, test_set, validation_set)
+
+kable(accuracy_dt)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+##c.
+```{r}
+# correlation matrices
+cor(image1[,4:11])
+cor(image2[,4:11])
+cor(image3[,4:11])
+```
+
+```{r}
+# NDAI
+summary(image1$NDAI)
+summary(image2$NDAI)
+summary(image3$NDAI)
+
+# conditional density plots
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ NDAI, data = image1[image1$NDAI > quantile(image1$NDAI, .1)[[1]] & image1$NDAI < quantile(image1$NDAI, .9)[[1]], ])
+cdplot(factor(label) ~ NDAI, data = image2[image2$NDAI > quantile(image2$NDAI, .1)[[1]] & image2$NDAI < quantile(image2$NDAI, .9)[[1]], ])
+cdplot(factor(label) ~ NDAI, data = image3[image3$NDAI > quantile(image3$NDAI, .1)[[1]] & image3$NDAI < quantile(image3$NDAI, .9)[[1]], ])
+```
+
+```{r}
+# SD
+# in the paper, the threshold that was mentioned would label a pixel as clear if SD < 2
+summary(image1$SD)
+summary(image2$SD)
+summary(image3$SD)
+# there are a lot of outliers
+
+# proportion of pixels that are clear according to the SD threshold in image 1
+(nrow(image1[image1$SD < 2, ]) / nrow(image1))
+
+# proportion of pixels that are clear according to the SD threshold in image 2
+(nrow(image2[image2$SD < 2, ]) / nrow(image2))
+
+# proportion of pixels that are clear according to the SD threshold in image 2
+(nrow(image3[image3$SD < 2, ]) / nrow(image3))
+
+# conditional density plots
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ SD, data = image1[image1$SD > quantile(image1$SD, .1)[[1]] & image1$SD < quantile(image1$SD, .9)[[1]], ])
+cdplot(factor(label) ~ SD, data = image2[image2$SD > quantile(image2$SD, .1)[[1]] & image2$SD < quantile(image2$SD, .9)[[1]], ])
+cdplot(factor(label) ~ SD, data = image3[image3$SD > quantile(image3$SD, .1)[[1]] & image3$SD < quantile(image3$SD, .9)[[1]], ])
+```
+
+```{r}
+# CORR
+# label pixel as clear if CORR > .75 and NDAI greater than NDAI threshold
+
+summary(image1$CORR)
+summary(image2$CORR)
+summary(image3$CORR)
+
+# the problem with ELCM in the paper is that a pixel's CORR was low even with when it was not cloudy (according to the algorithm, clear pixels are supposed to have a high CORR)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ CORR, data = image1[image1$CORR > quantile(image1$CORR, .1)[[1]] & image1$CORR < quantile(image1$CORR, .9)[[1]], ])
+cdplot(factor(label) ~ CORR, data = image2[image2$CORR > quantile(image2$CORR, .1)[[1]] & image2$CORR < quantile(image2$CORR, .9)[[1]], ])
+cdplot(factor(label) ~ CORR, data = image3[image3$CORR > quantile(image3$CORR, .1)[[1]] & image3$CORR < quantile(image3$CORR, .9)[[1]], ])
+```
+
+```{r}
+# DF
+par(mfrow = c(1, 3))
+hist(image1$DF)
+hist(image2$DF)
+hist(image3$DF)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ DF, data = image1[image1$DF > quantile(image1$DF, .1)[[1]] & image1$DF < quantile(image1$DF, .9)[[1]], ])
+cdplot(factor(label) ~ DF, data = image2[image2$DF > quantile(image2$DF, .1)[[1]] & image2$DF < quantile(image2$DF, .9)[[1]], ])
+cdplot(factor(label) ~ DF, data = image3[image3$DF > quantile(image3$DF, .1)[[1]] & image3$DF < quantile(image3$DF, .9)[[1]], ])
+```
+
+```{r}
+# CF
+par(mfrow = c(1, 3))
+hist(image1$CF)
+hist(image2$CF)
+hist(image3$CF)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ CF, data = image1[image1$CF > quantile(image1$CF, .1)[[1]] & image1$CF < quantile(image1$CF, .9)[[1]], ])
+cdplot(factor(label) ~ CF, data = image2[image2$CF > quantile(image2$CF, .1)[[1]] & image2$CF < quantile(image2$CF, .9)[[1]], ])
+cdplot(factor(label) ~ CF, data = image3[image3$CF > quantile(image3$CF, .1)[[1]] & image3$CF < quantile(image3$CF, .9)[[1]], ])
+```
+
+```{r}
+# BF
+par(mfrow = c(1, 3))
+hist(image1$BF)
+hist(image2$BF)
+hist(image3$BF)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ BF, data = image1[image1$BF > quantile(image1$BF, .1)[[1]] & image1$BF < quantile(image1$BF, .9)[[1]], ])
+cdplot(factor(label) ~ BF, data = image2[image2$BF > quantile(image2$BF, .1)[[1]] & image2$BF < quantile(image2$BF, .9)[[1]], ])
+cdplot(factor(label) ~ BF, data = image3[image3$BF > quantile(image3$BF, .1)[[1]] & image3$BF < quantile(image3$BF, .9)[[1]], ])
+```
+
+```{r}
+# AF
+par(mfrow = c(1, 3))
+hist(image1$AF)
+hist(image2$AF)
+hist(image3$AF)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ AF, data = image1[image1$AF > quantile(image1$AF, .1)[[1]] & image1$AF < quantile(image1$AF, .9)[[1]], ])
+cdplot(factor(label) ~ AF, data = image2[image2$AF > quantile(image2$AF, .1)[[1]] & image2$AF < quantile(image2$AF, .9)[[1]], ])
+cdplot(factor(label) ~ AF, data = image3[image3$AF > quantile(image3$AF, .1)[[1]] & image3$AF < quantile(image3$AF, .9)[[1]], ])
+```
+
+```{r}
+# AN
+par(mfrow = c(1, 3))
+hist(image1$AN)
+hist(image2$AN)
+hist(image3$AN)
+
+par(mfrow = c(1, 3))
+cdplot(factor(label) ~ AN, data = image1[image1$AN > quantile(image1$AN, .1)[[1]] & image1$AN < quantile(image1$AN, .9)[[1]], ])
+cdplot(factor(label) ~ AN, data = image2[image2$AN > quantile(image2$AN, .1)[[1]] & image2$AN < quantile(image2$AN, .9)[[1]], ])
+cdplot(factor(label) ~ AN, data = image3[image3$AN > quantile(image3$AN, .1)[[1]] & image3$AN < quantile(image3$AN, .9)[[1]], ])
+```
+
+##d: CVgeneric Function
+```{r}
+#One of the loss functions that we wrote
+MSE <- function(y_true, y_pred){
+  return(mean((as.numeric(y_true) - as.numeric(y_pred))^2))
+}
+```
+
+```{r}
+# Method 1 Predictions
+method1_predictions <- function(data, model, features, labels, folds){
+  #Here you split the data frame into the total number of folds
+  data_point = method1_split(data, folds)
+  test = data_point[[2]]
+  train = data_point[[1]]
+  a = labels
+  b = features
+  formula_train = as.formula(paste(a, paste(b, collapse=" + "), sep=" ~ "))
+  
+  #You use one of the folds as a validation and the other k-1 folds as the training set. You then run this process k times
+  k = 1
+  pred = c()
+  while(k<(folds+1)){
+    b = k
+    val = train[[b]]
+    y_true = val$label
+    training = train[-b]
+    
+    models = c()
+    for(i in 1:(folds-1)){
+      if(model == "glm"){
+        mod_fit = mod_fit = train(formula_train, data = training[[i]], method = model, family = "binomial")
+      } else{
+        mod_fit = train(formula_train, data = training[[i]], method = model)
+      }
+      models[[i]] = mod_fit
+    }
+    y_pred = predict(models[[1]], newdata = val)
+    accuracy = sum(y_pred == y_true)/length(y_true)
+    pred = c(pred, accuracy)
+    k = k + 1
+  }
+  pred_test = predict(models[[1]], newdata = test)
+  test_labels = test$label
+  accuracy_test = sum(pred_test == test_labels)/length(test_labels)
+  return(list(y_true, y_pred, pred, accuracy_test))
+}
+
+```
+
+```{r}
+#Method 2 Predictions
+method2_predictions <- function(data, model, features, labels, folds) {
+  # split the data frame into the total number of folds
+  data_point <- method2_split(data)
+  test1 <- data_point[[2]]
+  test2 <- data_point[[3]]
+  train <- data_point[[1]]
+  a <- labels
+  b <- features
+  formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ "))
+  
+  k <- 1
+  pred <- c()
+  while(k < (folds + 1)){
+    b <- k
+    val = train[[b]]
+    y_true = val$label
+    training = train[-b]
+    
+    models = c()
+    for(i in 1:(folds-1)){
+      if(model == "glm"){
+        mod_fit = mod_fit = train(formula_train, data = training[[i]], method = model, family = "binomial")
+      } else{
+        mod_fit = train(formula_train, data = training[[i]], method = model)
+      }
+      models[[i]] = mod_fit
+    }
+    y_pred = predict(models[[1]], newdata = val)
+    accuracy = sum(y_pred == y_true)/length(y_true)
+    pred = c(pred, accuracy)
+    k = k + 1
+  }
+  pred_test1 = predict(models[[4]], newdata = test1)
+  pred_test2 = predict(models[[4]], newdata = test2)
+  test1_labels = test1$label
+  test2_labels = test2$label
+  accuracy_test1 = sum(pred_test1 == test1_labels)/length(test1_labels)
+  accuracy_test2 = sum(pred_test2 == test2_labels)/length(test2_labels)
+  return(list(y_true, y_pred, pred, accuracy_test1, accuracy_test2))
+}
+
+```
+
+```{r}
+# Use either CVgeneric1 or CVgeneric2 based on split method
+CVgeneric1 <- function(data, model, features, labels, folds, loss){
+  list_pred = method1_predictions(data, model, features, labels, folds)
+  Total_loss = loss(list_pred[[1]], list_pred[[2]])
+  return(list(list_pred[[3]], list_pred[[4]], Total_loss))
+}
+
+CVgeneric2 <- function(data, model, features, labels, folds, loss){
+  list_pred = method2_predictions(data, model, features, labels, folds)
+  Total_loss = loss(list_pred[[1]], list_pred[[2]])
+  return(list(list_pred[[3]], list_pred[[4]], list_pred[[5]], Total_loss))
+}
+```
+
+
+#3: Modeling
+
+##a.
+```{r}
+#Logistic Regression Method 1
+image1_glm = CVgeneric1(image1, "glm", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image2_glm = CVgeneric1(image2, "glm", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image3_glm = CVgeneric1(image3, "glm", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+folds = c(1, 2, 3, 4, "Test")
+Image1 = c(image1_glm[[1]], image1_glm[[2]])
+Image2 = c(image2_glm[[1]], image2_glm[[2]])
+Image3 = c(image3_glm[[1]], image3_glm[[2]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#Linear Discriminant Analysis Method 1
+image1_lda = CVgeneric1(image1, "lda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image2_lda = CVgeneric1(image2, "lda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image3_lda = CVgeneric1(image3, "lda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+folds = c(1, 2, 3, 4, "Test")
+Image1 = c(image1_lda[[1]], image1_lda[[2]])
+Image2 = c(image2_lda[[1]], image2_lda[[2]])
+Image3 = c(image3_lda[[1]], image3_lda[[2]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#Quadratic Discriminant Analysis Method 1
+image1_qda = CVgeneric1(image1, "qda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image2_qda = CVgeneric1(image2, "qda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image3_qda = CVgeneric1(image3, "qda", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+folds = c(1, 2, 3, 4, "Test")
+Image1 = c(image1_qda[[1]], image1_qda[[2]])
+Image2 = c(image2_qda[[1]], image2_qda[[2]])
+Image3 = c(image3_qda[[1]], image3_qda[[2]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#k-Nearest Neighbors Method 1
+image1_knn = CVgeneric(image1, "knn", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image2_knn = CVgeneric(image2, "knn", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+image3_knn = CVgeneric(image3, "knn", c("SD", "AN", "NDAI"), "factor(label)", 4, MSE)
+
+folds = c(1, 2, 3, 4, "Test")
+Image1 = c(image1_knn[[1]], image1_knn[[2]])
+Image2 = c(image2_knn[[1]], image2_knn[[2]])
+Image3 = c(image3_knn[[1]], image3_knn[[2]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#Logistic Regression, split method 2
+image1_glm_s2 <- CVgeneric2(image1, "glm", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image2_glm_s2 <- CVgeneric2(image2, "glm", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image3_glm_s2 <- CVgeneric2(image3, "glm", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+folds = c(1, 2, 3, 4, 5, 6, 7, "Test1", "Test2")
+Image1 = c(image1_glm_s2[[1]], image1_glm_s2[[2]], image1_glm_s2[[3]])
+Image2 = c(image2_glm_s2[[1]], image2_glm_s2[[2]], image1_glm_s2[[3]])
+Image3 = c(image3_glm_s2[[1]], image3_glm_s2[[2]], image1_glm_s2[[3]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r, eval= FALSE}
+#Linear Discriminant Analysis, split method 2
+image1_lda_s2 <- CVgeneric2(image1, "lda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image2_lda_s2 <- CVgeneric2(image2, "lda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image3_lda_s2 <- CVgeneric2(image3, "lda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+folds = c(1, 2, 3, 4, 5, 6, 7, "Test1", "Test2")
+Image1 = c(image1_lda_s2[[1]], image1_lda_s2[[2]], image1_lda_s2[[3]])
+Image2 = c(image2_lda_s2[[1]], image2_lda_s2[[2]], image1_lda_s2[[3]])
+Image3 = c(image3_lda_s2[[1]], image3_lda_s2[[2]], image1_lda_s2[[3]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#Quadratic Discriminant Analysis, split method 2
+image1_qda_s2 <- CVgeneric2(image1, "qda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image2_qda_s2 <- CVgeneric2(image2, "qda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image3_qda_s2 <- CVgeneric2(image3, "qda", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+folds = c(1, 2, 3, 4, 5, 6, 7, "Test1", "Test2")
+Image1 = c(image1_qda_s2[[1]], image1_qda_s2[[2]], image1_qda_s2[[3]])
+Image2 = c(image2_qda_s2[[1]], image2_qda_s2[[2]], image1_qda_s2[[3]])
+Image3 = c(image3_qda_s2[[1]], image3_qda_s2[[2]], image1_qda_s2[[3]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+```{r}
+#k-Nearest Neighbors, split method 2
+image1_knn_s2 <- CVgeneric2(image1, "knn", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image2_knn_s2 <- CVgeneric2(image2, "knn", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+image3_knn_s2 <- CVgeneric2(image3, "knn", c("SD", "AN", "NDAI"), "factor(label)", 7, MSE)
+
+folds = c(1, 2, 3, 4, 5, 6, 7, "Test1", "Test2")
+Image1 = c(image1_knn_s2[[1]], image1_knn_s2[[2]], image1_knn_s2[[3]])
+Image2 = c(image2_knn_s2[[1]], image2_knn_s2[[2]], image1_knn_s2[[3]])
+Image3 = c(image3_knn_s2[[1]], image3_knn_s2[[2]], image1_knn_s2[[3]])
+acc_data = data.frame(folds, Image1, Image2, Image3)
+
+kable(acc_data)%>%
+  kable_styling(c("striped", "bordered"))
+```
+
+##b.
+```{r}
+#ROC Curve for Image1 GLM
+glm_pred1 =  method1_predictions(image1, "glm", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+glm_data1 = data.frame(glm_pred1[[1]], glm_pred1[[2]])
+colnames(glm_data1) = c("True", "Prediction")
+
+#ROC Curve for Image2 GLM
+glm_pred2 =  method1_predictions(image2, "glm", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+glm_data2 = data.frame(glm_pred2[[1]], glm_pred2[[2]])
+colnames(glm_data2) = c("True", "Prediction")
+
+#ROC Curve for Image3 GLM
+glm_pred3 =  method1_predictions(image3, "glm", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+glm_data3 = data.frame(glm_pred3[[1]], glm_pred3[[2]])
+colnames(glm_data3) = c("True", "Prediction")
+
+ggplot(glm_data1, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for Logistic Regression on Image 1")
+
+ggplot(glm_data2, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for Logistic Regression on Image 2")
+
+ggplot(glm_data3, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for Logistic Regression on Image 3")
+```
+
+```{r}
+#ROC Curve for Image1 QDA
+qda_pred1 =  method1_predictions(image1, "qda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+qda_data1 = data.frame(qda_pred1[[1]], qda_pred1[[2]])
+colnames(qda_data1) = c("True", "Prediction")
+
+#ROC Curve for Image2 QDA
+qda_pred2 =  method1_predictions(image2, "qda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+qda_data2 = data.frame(qda_pred2[[1]], qda_pred2[[2]])
+colnames(qda_data2) = c("True", "Prediction")
+
+#ROC Curve for Image3 QDA
+qda_pred3 =  method1_predictions(image3, "qda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+qda_data3 = data.frame(qda_pred3[[1]], qda_pred3[[2]])
+colnames(qda_data3) = c("True", "Prediction")
+
+ggplot(qda_data1, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for QDA on Image 1")
+
+ggplot(qda_data2, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for QDA on Image 2")
+
+ggplot(qda_data3, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for QDA on Image 3")
+```
+
+```{r}
+#ROC Curve for Image1 KNN
+knn_pred1 =  method1_predictions(image1, "knn", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+knn_data1 = data.frame(knn_pred1[[1]], knn_pred1[[2]])
+colnames(knn_data1) = c("True", "Prediction")
+
+#ROC Curve for Image2 KNN
+knn_pred2 =  method1_predictions(image2, "knn", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+knn_data2 = data.frame(knn_pred2[[1]], knn_pred2[[2]])
+colnames(knn_data2) = c("True", "Prediction")
+
+#ROC Curve for Image3 KNN
+knn_pred3 =  method1_predictions(image3, "knn", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+knn_data3 = data.frame(knn_pred3[[1]], knn_pred3[[2]])
+colnames(knn_data3) = c("True", "Prediction")
+
+ggplot(knn_data1, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for KNN on Image 1")
+
+ggplot(knn_data2, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for KNN on Image 2")
+
+ggplot(knn_data3, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for KNN on Image 3")
+```
+
+```{r}
+#ROC Curve for Image1 LDA
+lda_pred1 =  method1_predictions(image1, "lda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+lda_data1 = data.frame(lda_pred1[[1]], lda_pred1[[2]])
+colnames(lda_data1) = c("True", "Prediction")
+
+#ROC Curve for Image2 KNN
+lda_pred2 =  method1_predictions(image2, "lda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+lda_data2 = data.frame(lda_pred2[[1]], lda_pred2[[2]])
+colnames(lda_data2) = c("True", "Prediction")
+
+#ROC Curve for Image3 KNN
+lda_pred3 =  method1_predictions(image3, "lda", c("SD", "CORR", "NDAI"), "factor(label)", 4)
+lda_data3 = data.frame(lda_pred3[[1]], lda_pred3[[2]])
+colnames(lda_data3) = c("True", "Prediction")
+
+ggplot(lda_data1, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for LDA on Image 1")
+
+ggplot(lda_data2, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for LDA on Image 2")
+
+ggplot(lda_data3, aes(m = as.numeric(Prediction), d = as.numeric(True)))+ geom_roc(n.cuts=20,labels=FALSE) + style_roc(theme = theme_grey) + geom_rocci(fill="pink") + ggtitle("ROC Curve for LDA on Image 3")
+```
+
+
+#4: Diagnostics
+##a
+Method 1 Diagnostics
+```{r}
+
+#Diagnostics on KNN for Image 1
+im11_knn = train(factor(label)~SD+AN+CORR, data = f_im1[[1]][[1]], method = "knn")
+im11_data = data.frame(im11_knn$results)
+p1 = ggplot(data = im11_data, aes(x = k)) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 1 Image 1")
+
+im12_knn = train(factor(label)~SD+AN+CORR, data = f_im1[[1]][[2]], method = "knn")
+im12_data = data.frame(im12_knn$results)
+p2 = ggplot(data = im12_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 2 Image 1")
+
+im13_knn = train(factor(label)~SD+AN+CORR, data = f_im1[[1]][[3]], method = "knn")
+im13_data = data.frame(im13_knn$results)
+p3 = ggplot(data = im13_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 3 Image 1")
+
+im14_knn = train(factor(label)~SD+AN+CORR, data = f_im1[[1]][[4]], method = "knn")
+im14_data = data.frame(im14_knn$results)
+p4 = ggplot(data = im14_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 4 Image 1")
+
+multiplot(p1, p2, p3, p4, cols=2)
+```      
+
+```{r}
+#Diagnostics on KNN for Image 2
+im21_knn = train(factor(label)~SD+AN+CORR, data = f_im2[[1]][[1]], method = "knn")
+im21_data = data.frame(im21_knn$results)
+p1 = ggplot(data = im21_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 1 Image 2")
+
+im22_knn = train(factor(label)~SD+AN+CORR, data = f_im2[[1]][[2]], method = "knn")
+im22_data = data.frame(im22_knn$results)
+p2 = ggplot(data = im22_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 2 Image 2")
+
+im23_knn = train(factor(label)~SD+AN+CORR, data = f_im2[[1]][[3]], method = "knn")
+im23_data = data.frame(im23_knn$results)
+p3 = ggplot(data = im23_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 3 Image 2")
+
+im24_knn = train(factor(label)~SD+AN+CORR, data = f_im2[[1]][[4]], method = "knn")
+im24_data = data.frame(im24_knn$results)
+p4 = ggplot(data = im24_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 4 Image 2")
+
+multiplot(p1, p2, p3, p4, cols=2)
+```
+
+```{r}
+#Diagnostics on KNN for Image 3
+im31_knn = train(factor(label)~SD+AN+CORR, data = f_im3[[1]][[1]], method = "knn")
+im31_data = data.frame(im31_knn$results)
+p1 = ggplot(data = im31_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 1 Image 3")
+
+im32_knn = train(factor(label)~SD+AN+CORR, data = f_im3[[1]][[2]], method = "knn")
+im32_data = data.frame(im32_knn$results)
+p2 = ggplot(data = im32_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 2 Image 3")
+
+im33_knn = train(factor(label)~SD+AN+CORR, data = f_im3[[1]][[3]], method = "knn")
+im33_data = data.frame(im33_knn$results)
+p3 = ggplot(data = im33_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 3 Image 3")
+
+im34_knn = train(factor(label)~SD+AN+CORR, data = f_im3[[1]][[4]], method = "knn")
+im34_data = data.frame(im34_knn$results)
+p4 = ggplot(data = im34_data, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 4 Image 3")
+
+multiplot(p1, p2, p3, p4, cols=2)
+```
+
+Method 2 Diagnostics:
+FIRST: Determine the number of neighbors the KNN should use to obtain the highest accuracy, lowest RMSE
+
+SECOND: Plot image of blocks and their corresponding prediction accuracy as the validation set. Comment on why some blocks have such low prediction accuracy and if it can be explained by something in the image
+
+```{r}
+A <- method2_split(image2)[[1]][[1]]
+mod_fitA = train(factor(label) ~ SD + AN + NDAI, data = A, method = "knn")
+
+B <- method2_split(image2)[[1]][[4]]
+mod_fitB = train(factor(label) ~ SD + AN + NDAI, data = B, method = "knn")
+
+C <- method2_split(image2)[[1]][[5]]
+mod_fitC = train(factor(label) ~ SD + AN + NDAI, data = C, method = "knn")
+
+D <- method2_split(image2)[[1]][[7]]
+mod_fitD = train(factor(label) ~ SD + AN + NDAI, data = D, method = "knn")
+
+A_dat <- data.frame(mod_fitA$results)
+B_dat <- data.frame(mod_fitB$results)
+C_dat <- data.frame(mod_fitC$results)
+D_dat <- data.frame(mod_fitC$results)
+
+
+A_plot <- ggplot(data = A_dat, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 1 Image 2")
+
+B_plot <- ggplot(data = B_dat, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 4 Image 2")
+
+C_plot <- ggplot(data = C_dat, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 5 Image 2")
+
+D_plot <- ggplot(data = D_dat, aes(x = factor(k))) + geom_point(aes(y = Accuracy, color = "Accuracy")) + geom_point(aes(y = Kappa, color = "Kappa")) + ylab("Accuracy/Kappa") + ggtitle("Fold 7 Image 2")
+
+multiplot(A_plot, B_plot, C_plot, D_plot, cols = 2)
+```
+
+```{r}
+# first fold with 99.9% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[1]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# second fold with 99.7% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[2]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# third fold with 60.68% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[3]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# fourth fold with 95.10% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[4]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# fifth fold with 99.57% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[5]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# sixth fold with 35.75% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[6]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# seventh fold with 63.97% validation accuracy
+ggplot(data = method2_split(image2)[[1]][[7]], aes(x = x, y = y, color = factor(label))) +
+  geom_point() +
+  xlab("x coordinate") + 
+  ylab("y coordinate") + 
+  ggtitle("Image 2, Fold 7, 20% Accuracy") + 
+  scale_color_manual(values = c("darkblue", "lightblue", "white")) + labs(col = "Expert Label")
+
+# As expected, the blocks with low classification error were linearly separable, and the distribution of class labels is not similar. Blocks 3, 6, and 7 had low classification error, so we will now take a deeper look to see if there are any patterns within the misclassifications
+```
+
+##b.
+PLAN: For blocks with poor accuracy, obtain predicted labels and compare to expert labels. Look for rows where predicted value doesnt equal actual value. See if FP/ FN is more likely, and try to explain why based on images
+
+Need to compare true expert labels to predicted labels, and determine which misclassification error is most commmon. Predicted 0/True 1 or Predicted 1/true 0
+```{r}
+####### index on varaible name corresponds to fold number that is the validation set  
+# train all models on the 4th fold, since it has the most even distribution of class labels
+a <- "factor(label)"
+b <- c("SD", "NDAI", "AN")
+fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ "))
+    
+fourb_data_point <- method2_split(image2)
+four_b_test1 <- fourb_data_point[[2]]
+fourb_test2 <- fourb_data_point[[3]]
+fourb_train <- fourb_data_point[[1]]    
+
+
+# fold 1 as validation set 
+fourb_val1 <- fourb_train[[1]] # brackets change each time
+fourb_ytrue1 <- fourb_val1$label # brackets stay same each time
+fourb_train1 <- fourb_train[-1] # brackets change each time
+
+fourb_mod_fit1 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[4]], method = "knn")
+fourb_y_pred1 <- predict(fourb_mod_fit1, newdata = fourb_val1)
+fourb_accuracy1 <- sum(fourb_y_pred1 == fourb_ytrue1) / length(fourb_ytrue1)
+
+list(fourb_ytrue1, fourb_y_pred1, fourb_accuracy1)# accuracy of 99.9%
+fourb_d1 <- data.frame(fourb_ytrue1, fourb_y_pred1)
+fourb_results1 <- fourb_d1[fourb_d1$fourb_ytrue1 != fourb_d1$fourb_y_pred1, ]
+table(fourb_results1)
+# insignificant misclassification error
+
+# fold 2 as validation set 
+fourb_val2 <- fourb_train[[2]]
+fourb_ytrue2 <- fourb_val2$label
+fourb_train2 <- fourb_train[-2]
+
+fourb_mod_fit2 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[4]], method = "knn")
+fourb_y_pred2 <- predict(fourb_mod_fit2, newdata = fourb_val2)
+fourb_accuracy2 <- sum(fourb_y_pred2 == fourb_ytrue2) / length(fourb_ytrue2)
+
+list(fourb_ytrue2, fourb_y_pred2, fourb_accuracy2) # accuracy of 99.7%
+fourb_d2 <- data.frame(fourb_ytrue2, fourb_y_pred2)
+fourb_results2 <- fourb_d2[fourb_d2$fourb_ytrue2 != fourb_d2$fourb_y_pred2, ]
+table(fourb_results2)
+# insignificant misclassification error
+
+
+# fold 3 as validation set 
+fourb_val3 <- fourb_train[[3]]
+fourb_ytrue3 <- fourb_val3$label
+fourb_train3 <- fourb_train[-3]
+
+fourb_mod_fit3 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[4]], method = "knn")
+fourb_y_pred3 <- predict(fourb_mod_fit3, newdata = fourb_val3)
+fourb_accuracy3 <- sum(fourb_y_pred3 == fourb_ytrue3) / length(fourb_ytrue3)
+
+list(fourb_ytrue3, fourb_y_pred3, fourb_accuracy3) # accuracy of 60.68 %
+fourb_d3 <- data.frame(fourb_ytrue3, fourb_y_pred3)
+fourb_results3 <- fourb_d3[fourb_d3$fourb_ytrue3 != fourb_d3$fourb_y_pred3, ]
+table(fourb_results3)
+# most common misclassification error is predicting "cloud" when the true value is "no cloud"
+
+
+# fold 4 as validation set 
+fourb_val4 <- fourb_train[[4]]
+fourb_ytrue4 <- fourb_val4$label
+fourb_train4 <- fourb_train[-4]
+
+fourb_mod_fit4 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[3]], method = "knn") # train on 3rd fold
+fourb_y_pred4 <- predict(fourb_mod_fit4, newdata = fourb_val4)
+fourb_accuracy4 <- sum(fourb_y_pred4 == fourb_ytrue4) / length(fourb_ytrue4)
+
+list(fourb_ytrue4, fourb_y_pred4, fourb_accuracy4) # accuracy of 95.10 %
+fourb_d4 <- data.frame(fourb_ytrue4, fourb_y_pred4)
+fourb_results4 <- fourb_d4[fourb_d4$fourb_ytrue4 != fourb_d4$fourb_y_pred4, ]
+table(fourb_results4)
+# misclassifying as cloud when the the true value is cloud is more common than misclassifying as no cloud, minor misclassification error in general
+
+
+# fold 5 as validation set 
+fourb_val5 <- fourb_train[[5]]
+fourb_ytrue5 <- fourb_val5$label
+fourb_train5 <- fourb_train[-5]
+
+fourb_mod_fit5 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[4]], method = "knn") # train on 3rd fold
+fourb_y_pred5 <- predict(fourb_mod_fit5, newdata = fourb_val5)
+fourb_accuracy5 <- sum(fourb_y_pred5 == fourb_ytrue5) / length(fourb_ytrue5)
+
+list(fourb_ytrue5, fourb_y_pred5, fourb_accuracy5) # accuracy of 99.57%
+fourb_d5 <- data.frame(fourb_ytrue5, fourb_y_pred5)
+fourb_results5 <- fourb_d5[fourb_d5$fourb_ytrue5 != fourb_d5$fourb_y_pred5, ]
+table(fourb_results5)
+# misclassifying as cloud when the the true value is cloud is more common than misclassifying as no cloud, insignificant misclassification error in general
+
+
+# fold 6 as validation set 
+fourb_val6 <- fourb_train[[6]]
+fourb_ytrue6 <- fourb_val6$label
+fourb_train6 <- fourb_train[-6]
+
+fourb_mod_fit6 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[3]], method = "knn") # train on 3rd fold
+fourb_y_pred6 <- predict(fourb_mod_fit6, newdata = fourb_val6)
+fourb_accuracy6 <- sum(fourb_y_pred6 == fourb_ytrue6) / length(fourb_ytrue6)
+
+list(fourb_ytrue6, fourb_y_pred6, fourb_accuracy6) # accuracy of 35.75% 
+fourb_d6 <- data.frame(fourb_ytrue6, fourb_y_pred6)
+fourb_results6 <- fourb_d6[fourb_d6$fourb_ytrue6 != fourb_d6$fourb_y_pred6, ]
+table(fourb_results6)
+# significant misclassification error. Every single misclassification is predicting the pixel as "cloud" when it is really "no cloud"
+
+
+# fold 7 as validation set 
+fourb_val7 <- fourb_train[[7]]
+fourb_ytrue7 <- fourb_val7$label
+fourb_train7 <- fourb_train[-7]
+
+fourb_mod_fit7 = train(fourb_formula_train <- as.formula(paste(a, paste(b, collapse = " + "), sep = " ~ ")), data = fourb_train1[[4]], method = "knn") # train on 3rd fold
+fourb_y_pred7 <- predict(fourb_mod_fit7, newdata = fourb_val7)
+fourb_accuracy7 <- sum(fourb_y_pred7 == fourb_ytrue7) / length(fourb_ytrue7)
+
+list(fourb_ytrue7, fourb_y_pred7, fourb_accuracy7) # accuracy of 63.97%
+fourb_d7 <- data.frame(fourb_ytrue7, fourb_y_pred7)
+fourb_results7 <- fourb_d7[fourb_d7$fourb_ytrue7 != fourb_d7$fourb_y_pred7, ]
+table(fourb_results7)
+# significant misclassification error. Again, misclassifying a pixel with true value "no cloud" as "cloud" is much more common than the other way around
+```
+
+
+
