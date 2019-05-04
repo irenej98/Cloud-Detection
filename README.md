@@ -30,5 +30,15 @@ Install these packages before calling on library using:
 
 ```
 install.package("package_name")
-``
+```
+
+## Plotting Images
+
+To produce the Image1, Image2, and Image3, we used ggplot to map the x and y coordinates while setting the color to the expert labels within each data frame. Below is the code to reproduce Image1:
+
+```
+ggplot(data = image1, aes(x = x, y = y, color = factor(label))) + geom_point() + xlab("x coordinate") + ylab("y coordinate") + ggtitle("Image 1") + scale_color_manual(values=c("darkblue", "lightblue", "white")) + labs(col="Expert Label")
+```
+
+
 
