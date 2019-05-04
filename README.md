@@ -9,6 +9,7 @@ The goal of this project is the exploration and modeling of cloud detection in t
 - [CVgeneric Function](#cvgenericfunction)
 - [Classifiers](#classifiers)
 - [ROC Curves](#roccurves)
+- [Credits](#credits)
 
 
 ## Getting Started
@@ -119,7 +120,12 @@ To train our model, we used four different classifiers to train our model: Logis
 ## ROC Curves
 The ROC Curves shows the trade off between true positives and false positives. It plots many different cut-off values for decision rules, and their corresponding true positive and false positive rates. The goal is to choose a cutoff value that maximizes the true positive rate without sacrificing an increase in false positive rate. 
 
+---
 
+## Credits
+Authors of this report:
+Josh Birck (joshbirck1@berkeley.edu)
+Irene Ju (irenej98@berkeley.edu)
 
 
 
